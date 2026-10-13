@@ -17,7 +17,8 @@ jobs:
     permissions:
       contents: read
       pages: read
-    runs-on: ubuntu-latest
+    # The replay suite exceeds its existing budgets on the standard x64 Linux runner.
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
