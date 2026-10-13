@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.vitest/
+*.tsbuildinfo
+*.swp
+.DS_Store
+work/
+.env
+.env.*
+*.pem
+*.key
