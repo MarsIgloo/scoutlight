@@ -31,7 +31,8 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Full check
-        run: npm run check
+        # Serialize test files on the hosted runner; retain every test and its existing budget.
+        run: npm run check -- -- --maxWorkers=1
       - name: Production build
         run: npm run build
       - name: Record published commit
