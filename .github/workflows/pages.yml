@@ -33,6 +33,8 @@ jobs:
         run: npm ci
       - name: Full check
         # Serialize test files on the hosted runner; retain every test and its existing budget.
+        env:
+          NODE_OPTIONS: --max-semi-space-size=128
         run: npm run check -- -- --maxWorkers=1
       - name: Production build
         run: npm run build
