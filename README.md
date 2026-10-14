@@ -158,8 +158,8 @@ completed portfolio release. Publication status will be recorded after live veri
 
 ## Publishing updates
 
-The Pages workflow in `.github/workflows/pages.yml` uses Node 26, `npm ci`,
-the full check, and the production build. Deployment depends on the successful
+The Pages workflow in `.github/workflows/pages.yml` targets Node 24 LTS on an ARM macOS build runner, `npm ci`,
+the full check with one worker, and the production build. Deployment depends on the successful
 build job; only deployment receives Pages-write and identity-token permissions.
 The site includes `build-info.json` with the deployed commit for verification.
 
