@@ -8,6 +8,7 @@ import type {
   ScoutId, ScoutState, SimulationState,
 } from '../engine/types';
 import { evaluateRun, reachableSurveyIndices } from './metrics';
+import { RunMetricsAccumulator } from './metrics-accumulator';
 
 const IDS = ['scout-a', 'scout-b', 'scout-c'] as const;
 const LINE: Scenario = {
@@ -274,5 +275,159 @@ describe('run validation and purity', () => {
     expect(first.coverage).not.toBe(second.coverage);
     expect(first.connectedTicks).not.toBe(second.connectedTicks);
     expect(first.connectivityFraction).not.toBe(second.connectivityFraction);
+  });
+});
+
+describe('incremental run metrics against the unchanged batch reference', () => {
+  function comparePrefixes(scenario: Scenario, history: readonly SimulationState[]): void {
+    const accumulator = new RunMetricsAccumulator(scenario, history[0]!);
+    for (let tick = 0; tick < history.length; tick++) {
+      const actual = tick === 0 ? accumulator.getMetrics() : accumulator.append(history[tick]!);
+      expect(actual).toStrictEqual(evaluateRun(scenario, history.slice(0, tick + 1)));
+    }
+  }
+
+  it('matches every small prefix with copied discoveries, distinct sources, walls and connectivity', () => {
+    const a = record(ISLANDS, 0, 'scout-a');
+    const b = record(ISLANDS, 0, 'scout-b');
+    const walls = IDS.map(id => record(ISLANDS, 2, id));
+    const island = [record(ISLANDS, 6, 'scout-a'), record(ISLANDS, 6, 'scout-c')];
+    const history = deepFreeze([
+      snapshot(ISLANDS, 0),
+      snapshot(ISLANDS, 1, { local: { 'scout-a': [0, 1, 2, 6], 'scout-b': [1, 3] },
+        relay: [0, 2, 7], connected: ['scout-a', 'scout-c'],
+        records: { 'scout-a': [a, ...walls], 'scout-b': [b, ...island] } }),
+      snapshot(ISLANDS, 2, { local: { 'scout-a': [0, 1], 'scout-c': [3, 4, 7] },
+        relay: [0, 1, 3, 4], connected: ['scout-a'], records: {
+          relay: [a, b, ...walls, ...island].map(item => ({ ...item, receivedAtTick: 2 })),
+          'scout-c': [a, b, ...walls, ...island],
+        } }),
+      snapshot(ISLANDS, 3, { connected: ['scout-b'], records: { relay: [a, b] } }),
+    ]);
+    comparePrefixes(ISLANDS, history);
+    expect(evaluateRun(ISLANDS, history).duplicateDiscoveries).toBe(4);
+  });
+
+  it('matches first time-to-90, tick-zero targets and noninteger thresholds at every prefix', () => {
+    const all = Array.from({ length: 10 }, (_, index) => index);
+    comparePrefixes(LINE, [snapshot(LINE, 0), ...[8, 9, 0, 10].map((count, index) =>
+      snapshot(LINE, index + 1, { local: { 'scout-a': all }, relay: all.slice(0, count) }))]);
+    comparePrefixes(LINE, [snapshot(LINE, 0, { relay: all }), snapshot(LINE, 1)]);
+    const clear = reachableSurveyIndices(TEST_SCENARIO);
+    const below = Math.ceil(clear.length * 0.9) - 1;
+    comparePrefixes(TEST_SCENARIO, [snapshot(TEST_SCENARIO, 0),
+      snapshot(TEST_SCENARIO, 1, { relay: clear.slice(0, below) }),
+      snapshot(TEST_SCENARIO, 2, { relay: clear.slice(0, below + 1) })]);
+  });
+
+  it('rejects malformed appends like the batch reference, then remains usable at the same tick', () => {
+    const zero = snapshot(LINE, 0);
+    const valid = snapshot(LINE, 1, { connected: ['scout-a'], records: { relay: [record(LINE, 0, 'scout-a')] } });
+    const invalid: SimulationState[] = [
+      zero, snapshot(LINE, 2), { ...valid, tick: 0.5 },
+      { ...valid, schemaVersion: 1 as 2 },
+      { ...valid, config: { ...valid.config, rulesVersion: 1 as 2 } },
+      { ...valid, config: { ...valid.config, scenarioId: 'other' } },
+      { ...valid, config: { ...valid.config, scenarioVersion: 2 } },
+      { ...valid, config: { ...valid.config, communicationRange: 3 } },
+      { ...valid, config: { ...valid.config, relaySiteId: 'site-b' } },
+      { ...valid, scouts: [valid.scouts[1], valid.scouts[0], valid.scouts[2]] },
+      { ...valid, relay: { ...valid.relay, position: { x: 4, y: 0 } } },
+      { ...valid, relay: { ...valid.relay, connectivityEvaluatedAtTick: 0 } },
+      { ...valid, relay: { ...valid.relay, connectedScoutIds: [] } },
+      { ...valid, relay: { ...valid.relay, communication: { status: 'not-evaluated' } } },
+      { ...valid, scouts: [{ ...valid.scouts[0], communication: {
+        status: 'evaluated', tick: 0, peerIds: [], componentId: 'relay', relayReachable: true,
+      } }, valid.scouts[1], valid.scouts[2]] },
+      { ...valid, relay: { ...valid.relay, sharedMap: { ...valid.relay.sharedMap, width: 9 } } },
+      { ...valid, scouts: [{ ...valid.scouts[0], localMap: {
+        ...valid.scouts[0].localMap, cells: ['blocked', ...valid.scouts[0].localMap.cells.slice(1)],
+      } }, valid.scouts[1], valid.scouts[2]] },
+      ...[[2, 2], [2, 1], [0, 1], [1, 0], [0.5, 1], [1, 1.5]].map(([discovered, received]) =>
+        snapshot(LINE, 1, { records: { relay: [record(LINE, 0, 'scout-a', discovered!, received!)] } })),
+      snapshot(LINE, 1, { records: { relay: [{ ...record(LINE, 0, 'scout-a'), cell: 'blocked' }] } }),
+      snapshot(LINE, 1, { records: { relay: [{ ...record(LINE, 0, 'scout-a'), sourceId: 'other' as ScoutId }] } }),
+      snapshot(LINE, 1, { records: { relay: [{ ...record(LINE, 0, 'scout-a'), position: { x: 10, y: 0 } }] } }),
+    ];
+    for (const bad of invalid) {
+      const accumulator = new RunMetricsAccumulator(LINE, zero);
+      const before = accumulator.getMetrics();
+      expect(() => evaluateRun(LINE, [zero, bad])).toThrow();
+      expect(() => accumulator.append(bad)).toThrow();
+      expect(accumulator.getMetrics()).toStrictEqual(before);
+      expect(accumulator.append(valid)).toStrictEqual(evaluateRun(LINE, [zero, valid]));
+      expect(() => accumulator.append(valid)).toThrow();
+      expect(accumulator.append(snapshot(LINE, 2))).toStrictEqual(evaluateRun(LINE, [zero, valid, snapshot(LINE, 2)]));
+    }
+  });
+
+  it('rolls back staged discoveries on conflicts within a snapshot or across time', () => {
+    const a = record(LINE, 0, 'scout-a');
+    const zero = snapshot(LINE, 0);
+    const one = snapshot(LINE, 1, { records: { relay: [a] } });
+    for (const records of [
+      { relay: [record(LINE, 1, 'scout-b', 2)], 'scout-c': [{ ...a, discoveredAtTick: 2, receivedAtTick: 2 }] },
+      { relay: [record(LINE, 1, 'scout-b', 2)], 'scout-c': [record(LINE, 1, 'scout-b')] },
+    ]) {
+      const accumulator = new RunMetricsAccumulator(LINE, zero);
+      accumulator.append(one);
+      const before = accumulator.getMetrics();
+      const bad = snapshot(LINE, 2, { connected: IDS, relay: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], records });
+      expect(() => evaluateRun(LINE, [zero, one, bad])).toThrow('Conflicting first-discovery');
+      expect(() => accumulator.append(bad)).toThrow('Conflicting first-discovery');
+      expect(accumulator.getMetrics()).toStrictEqual(before);
+      const valid = snapshot(LINE, 2, { records: { relay: [record(LINE, 1, 'scout-c', 2)] } });
+      expect(accumulator.append(valid)).toStrictEqual(evaluateRun(LINE, [zero, one, valid]));
+      expect(accumulator.getMetrics().duplicateDiscoveries).toBe(0);
+    }
+  });
+
+  it('validates static context and tick zero before accepting a run', () => {
+    const zero = snapshot(LINE, 0);
+    for (const scenario of [
+      { ...LINE, id: '' }, { ...LINE, version: 0 }, { ...LINE, communicationRange: 0 },
+      { ...LINE, groundTruth: { ...LINE.groundTruth, cells: [] } },
+      { ...LINE, groundTruth: parseGroundTruth(['#.........']) },
+      { ...LINE, groundTruth: parseGroundTruth(['...#......']) },
+    ]) {
+      expect(() => evaluateRun(scenario, [zero])).toThrow();
+      expect(() => new RunMetricsAccumulator(scenario, zero)).toThrow();
+    }
+    for (const invalid of [snapshot(LINE, 1), { ...zero, relay: { ...zero.relay,
+      communication: { status: 'evaluated', tick: 0, peerIds: [], componentId: 'relay', relayReachable: true } as const,
+    } }]) {
+      expect(() => evaluateRun(LINE, [invalid])).toThrow();
+      expect(() => new RunMetricsAccumulator(LINE, invalid)).toThrow();
+    }
+  });
+
+  it('detaches static context, prepared values, publications, and coverage rows', () => {
+    const scenario = structuredClone(LINE);
+    const zero = deepFreeze(snapshot(LINE, 0));
+    const accumulator = new RunMetricsAccumulator(scenario, zero);
+    const published = accumulator.getMetrics();
+    const saved = JSON.stringify(published);
+    const one = snapshot(LINE, 1, { relay: [0], connected: ['scout-a'], records: { relay: [record(LINE, 0, 'scout-a')] } });
+    const commit = accumulator.prepareAppend(one);
+    expect(accumulator.getMetrics()).toStrictEqual(published);
+    // Runtime mutation by a caller must not alter retained evaluator context or prepared data.
+    (scenario.groundTruth.cells as string[])[0] = 'blocked';
+    (scenario.relaySites[0].position as { x: number }).x = 9;
+    (one.relay.sharedMap.cells as string[])[0] = 'blocked';
+    const current = commit();
+    expect(current).toStrictEqual(evaluateRun(LINE, [zero, snapshot(LINE, 1, {
+      relay: [0], connected: ['scout-a'], records: { relay: [record(LINE, 0, 'scout-a')] },
+    })]));
+    expect(JSON.stringify(published)).toBe(saved);
+    expect(current.coverage[0]).not.toBe(published.coverage[0]);
+    expect(current.connectedTicks).not.toBe(published.connectedTicks);
+    (published.coverage[0] as { fleetKnownCount: number }).fleetKnownCount = 99;
+    (published.connectedTicks as Record<ScoutId, number>)['scout-a'] = 99;
+    expect(accumulator.getMetrics()).toStrictEqual(current);
+    deepFreeze(current);
+    accumulator.append(snapshot(LINE, 2));
+    expect(current.completedTicks).toBe(1);
+    expect(current.coverage).toHaveLength(2);
+    expect(() => commit()).toThrow('stale');
   });
 });

@@ -3,6 +3,7 @@ import { CANDIDATE_SCENARIO } from '../experiments/candidate';
 import { EXPERIMENT_TICK_CAP, runBaseline } from '../experiments/relay-placement';
 import { WEST_ROOM_BRIDGE_VARIANT } from '../experiments/route-investigation';
 import { generateSeededMission } from '../experiments/seeded-mission';
+import { evaluateRun } from '../experiments/metrics';
 import { hashSnapshot, serializeSnapshot } from '../engine/snapshot';
 import type { Scenario } from '../engine/types';
 import { projectInspector, projectScene } from '../rendering/projection';
@@ -103,7 +104,15 @@ describe('paired comparison clock', () => {
     const expectedA = runBaseline(scenario, 'site-a', EXPERIMENT_TICK_CAP);
     const expectedB = runBaseline(scenario, 'site-b', EXPERIMENT_TICK_CAP);
     const runner = new ComparisonRunner(scenario, new ManualScheduler());
-    for (let tick = 0; tick < EXPERIMENT_TICK_CAP; tick++) runner.step();
+    for (let tick = 0; tick <= EXPERIMENT_TICK_CAP; tick++) {
+      if ([0, 1, 40, 80, 160].includes(tick)) {
+        for (const [site, expected] of [['site-a', expectedA], ['site-b', expectedB]] as const) {
+          expect(runner.getSnapshot().runs[site].metrics)
+            .toStrictEqual(evaluateRun(scenario, expected.snapshots.slice(0, tick + 1)));
+        }
+      }
+      if (tick < EXPERIMENT_TICK_CAP) runner.step();
+    }
     const view = runner.getSnapshot();
     expect(view).toMatchObject({ tick: 160, running: false, complete: true });
     for (const [site, expected] of [['site-a', expectedA], ['site-b', expectedB]] as const) {
@@ -120,6 +129,30 @@ describe('paired comparison clock', () => {
     }
     runner.dispose();
   }, 30_000);
+
+  it('retains published metrics, isolates A/B counters and rebuilds both accumulators on reset', () => {
+    const runner = new ComparisonRunner(WEST_ROOM_BRIDGE_VARIANT, new ManualScheduler());
+    const initial = runner.getSnapshot();
+    runner.step();
+    const first = runner.getSnapshot();
+    const saved = JSON.stringify(first);
+    for (let tick = 0; tick < 4; tick++) runner.step();
+    expect(JSON.stringify(first)).toBe(saved);
+    for (const site of ['site-a', 'site-b'] as const) {
+      const run = runner.getSnapshot().runs[site];
+      expect(run.metrics).toStrictEqual(evaluateRun(WEST_ROOM_BRIDGE_VARIANT, run.history));
+      expect(first.runs[site].metrics.coverage).toHaveLength(2);
+      expect(initial.runs[site].metrics.coverage).toHaveLength(1);
+    }
+    expect(first.runs['site-a'].metrics.connectedTicks).not.toBe(first.runs['site-b'].metrics.connectedTicks);
+    expect(first.runs['site-a'].metrics.coverage).not.toBe(first.runs['site-b'].metrics.coverage);
+    runner.reset();
+    expect(runner.getSnapshot().runs).toStrictEqual(initial.runs);
+    runner.step();
+    expect(runner.getSnapshot().runs).toStrictEqual(first.runs);
+    expect(JSON.stringify(first)).toBe(saved);
+    runner.dispose();
+  });
 
   it.each([1, 2, 4] as readonly PlaybackSpeed[])('is playback-speed independent at %s×', speed => {
     const scenario = generateSeededMission(12345);

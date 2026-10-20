@@ -3,6 +3,7 @@ import { CANDIDATE_SCENARIO } from '../experiments/candidate';
 import { EXPERIMENT_TICK_CAP, runBaseline } from '../experiments/relay-placement';
 import { WEST_ROOM_BRIDGE_VARIANT } from '../experiments/route-investigation';
 import { generateSeededMission } from '../experiments/seeded-mission';
+import { evaluateRun } from '../experiments/metrics';
 import { hashSnapshot, serializeSnapshot } from '../engine/snapshot';
 import type { RelaySiteId } from '../engine/types';
 import { SimulationRunner, type Scheduler, type PlaybackSpeed } from './runner';
@@ -34,6 +35,27 @@ class ManualScheduler implements Scheduler {
 }
 
 describe('single-run controller', () => {
+  it('retains earlier metrics publications and recreates metrics on reset and site changes', () => {
+    const runner = new SimulationRunner(WEST_ROOM_BRIDGE_VARIANT);
+    const initial = runner.getSnapshot();
+    runner.step();
+    const first = runner.getSnapshot();
+    const saved = JSON.stringify(first.metrics);
+    runner.step();
+    expect(JSON.stringify(first.metrics)).toBe(saved);
+    expect(initial.metrics.coverage).toHaveLength(1);
+    expect(first.metrics.coverage).toHaveLength(2);
+    runner.reset();
+    expect(runner.getSnapshot().metrics).toStrictEqual(initial.metrics);
+    runner.step();
+    expect(runner.getSnapshot().metrics).toStrictEqual(first.metrics);
+    runner.reset('site-b');
+    runner.step();
+    const next = runner.getSnapshot();
+    expect(next.metrics).toStrictEqual(evaluateRun(WEST_ROOM_BRIDGE_VARIANT, next.history));
+    expect(JSON.stringify(first.metrics)).toBe(saved);
+    runner.dispose();
+  });
   it('starts once, pauses, single-steps only while paused, and reschedules speed without duplicate timers', () => {
     const scheduler = new ManualScheduler();
     const runner = new SimulationRunner(CANDIDATE_SCENARIO, 'site-a', scheduler);

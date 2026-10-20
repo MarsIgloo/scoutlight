@@ -110,6 +110,16 @@ sequences remain identical. West-room demonstrates route sensitivity (Scout A
 first moves west with A and north with B), not better exploration. Three
 preselected seeds do not establish a generally superior relay.
 
+Incremental-metrics repair (2026-10-20): strict types and **433 tests in 26 files**
+passed in 76.28 seconds locally on Node 26.0.0. Build, experiment, investigation,
+and the nine-run mission sample passed sequentially. The unchanged batch evaluator
+checks accumulated metrics on every small-fixture prefix and selected large-run
+prefixes. Existing complete-history, canonical-state/hash, timer, speed and cap
+checks retain their assertions and 30-second budgets. Independent read-only review
+found no blocking metric, immutable-publication or information-boundary defects
+(correctness/readability 9/10). See [phase measurements](docs/metrics-performance.md)
+for the same-environment before/after workload. CI and hosted verification are pending.
+
 Default-promotion verification (2026-10-13): the inspected baseline passed
 **415 tests in 26 files**; the final standard check passed **423 tests in 26
 files**. Check, build, experiment, investigate, and the nine-run mission sample

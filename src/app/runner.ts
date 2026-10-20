@@ -1,7 +1,8 @@
 import { createInitialState } from '../engine/initial-state';
 import { stepBaselineAutonomous } from '../engine/step';
 import type { RelaySiteId, Scenario, SimulationState } from '../engine/types';
-import { evaluateRun, type RunMetrics } from '../experiments/metrics';
+import type { RunMetrics } from '../experiments/metrics';
+import { RunMetricsAccumulator } from '../experiments/metrics-accumulator';
 import { EXPERIMENT_TICK_CAP } from '../experiments/relay-placement';
 
 export type PlaybackSpeed = 1 | 2 | 4;
@@ -27,6 +28,7 @@ export interface RunView {
 /** Owns the simulation clock. Rendering and React only subscribe to completed ticks. */
 export class SimulationRunner {
   private view: RunView;
+  private metrics!: RunMetricsAccumulator;
   private timer: TimerHandle | undefined;
   private timerVersion = 0;
   private disposed = false;
@@ -85,7 +87,8 @@ export class SimulationRunner {
   private fresh(site: RelaySiteId, generation: number, speed: PlaybackSpeed): RunView {
     const state = createInitialState(this.scenario, site);
     const history = [state];
-    return { state, history, metrics: evaluateRun(this.scenario, history), running: false,
+    this.metrics = new RunMetricsAccumulator(this.scenario, state);
+    return { state, history, metrics: this.metrics.getMetrics(), running: false,
       speed, generation, complete: false };
   }
 
@@ -93,7 +96,7 @@ export class SimulationRunner {
     const state = stepBaselineAutonomous(this.scenario, this.view.state);
     const history = [...this.view.history, state];
     const complete = state.tick >= EXPERIMENT_TICK_CAP;
-    this.view = { ...this.view, state, history, metrics: evaluateRun(this.scenario, history),
+    this.view = { ...this.view, state, history, metrics: this.metrics.append(state),
       complete, running: this.view.running && !complete };
     this.publish();
   }
