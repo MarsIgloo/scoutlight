@@ -6,6 +6,8 @@ the same mission repeatable; paired A/B runs show consequences at matching
 ticks. The question is concrete: **what can a group explore, and what does its
 relay actually receive when communication is intermittent?**
 
+[Try the live demo](https://marsigloo.github.io/scoutlight/) · [Browse the source](https://github.com/MarsIgloo/scoutlight)
+
 ## Architecture and information boundaries
 
 The TypeScript engine owns simulation state and tick transitions. React provides
@@ -69,6 +71,11 @@ assignment of targets, or guarantee of optimal exploration.
 - **Clock lifecycle:** comparison publishes two matched ticks from one clock
   while retaining separate histories. Reset and disposal invalidate pending
   callbacks; switching Viewing A/B changes only presentation.
+- **Incremental observation:** playback validates each new snapshot once and
+  retains discovery facts and the survey denominator per run. It stages changes
+  before committing them, so rejected input cannot partly change the metrics.
+  Both comparison ticks are prepared before publication. Detached metric rows
+  keep earlier views stable; the unchanged batch evaluator checks equivalence.
 
 Generator v1 uses a fixed 32-bit linear congruential sequence to construct a
 connected 25 × 16, six-room map, doors, starts, headings, and relay sites.
@@ -105,14 +112,19 @@ pacing only. Full navigation on mode or map changes favors predictable fresh
 state over preserving progress.
 
 The model has perfect integer-grid positions, static terrain, truthful sensing,
-and instantaneous component-wide exchange. Full state cloning and repeated
-metric evaluation favor clarity at a 160-tick scale over long-run performance.
+and instantaneous component-wide exchange. Full detached snapshots and a
+160-tick cap favor traceable replay. Playback metrics process new snapshots
+instead of reevaluating old history; [measured phase costs](metrics-performance.md)
+document the improvement and remaining timeout headroom. Long-run performance
+is still untuned.
 The generator varies one rooms-and-passages family and need not give unique
 terrain for every seed. There is one deterministic policy and no arbitrary
 relay placement or timeline control. Snapshot import is not schema-validated.
 
 This is an abstract software simulation, not real robotics, SLAM, machine
-learning, optimal exploration, or a production distributed system. The local
-production build is the deliverable; hosting, deployment, and Git checkpointing
-remain separate publication work. Desktop layouts below 1024 × 768, other
+learning, optimal exploration, or a production distributed system. The static
+demo is published on GitHub Pages after automated checks and a build, with no
+backend. Hosted interactions were verified at 1440 × 900 and 1024 × 768, including
+a full paired 4× seed-12345 run matching headless results; current CI and hosted
+evidence are in the [README](../README.md). Desktop layouts below 1024 × 768, other
 browser engines, and runtime reduced-motion behavior remain verification limits.

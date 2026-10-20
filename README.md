@@ -4,7 +4,9 @@ Explore an unknown grid with three autonomous scouts, choose a communication
 relay site, and inspect what each scout and the relay know. **Single run** offers
 relay sites A/B/C; **Compare A/B** shows two isolated runs at the same tick.
 Save a mission URL to reproduce its map, scout starts, headings, and relay sites.
-This is a local browser simulation with one deterministic exploration policy.
+This is a browser simulation with one deterministic exploration policy.
+
+[Live demo](https://marsigloo.github.io/scoutlight/) · [Source repository](https://github.com/MarsIgloo/scoutlight)
 
 ## Run locally
 
@@ -118,7 +120,22 @@ prefixes. Existing complete-history, canonical-state/hash, timer, speed and cap
 checks retain their assertions and 30-second budgets. Independent read-only review
 found no blocking metric, immutable-publication or information-boundary defects
 (correctness/readability 9/10). See [phase measurements](docs/metrics-performance.md)
-for the same-environment before/after workload. CI and hosted verification are pending.
+for the same-environment before/after workload.
+
+Pages publication verified (2026-10-20): [repair CI and deployment](https://github.com/MarsIgloo/scoutlight/actions/runs/39482623674)
+passed **433 tests in 26 files** on Node 24.20.0 in 253.83 seconds, then built
+and deployed. The slowest comparison-history case took 23.16 seconds, leaving
+6.84 seconds under its unchanged budget. Live HTML and all seven referenced
+assets returned 200; `build-info.json` matched repair commit `aa5ae43`.
+The real HTTPS app passed fresh entry, saved-link refresh, comparison, mode
+changes during playback, New map, Reset, Relay/Fleet/scout knowledge, inspection,
+keyboard shortcuts and native focus/activation at 1440 × 900 and 1024 × 768.
+Mode navigation after completion also started a fresh paused run. One hosted
+4× paired seed-12345 run reached tick 160 with the headless results above:
+100% explored in both, A displayed 45.7% received and 529 duplicates, B 100%
+and 515. Completion was observed by 31.02 seconds; this is an observation bound,
+not an exact completion timestamp. No application browser warnings or errors
+were recorded. The existing reduced-motion and browser-coverage limits remain.
 
 Default-promotion verification (2026-10-13): the inspected baseline passed
 **415 tests in 26 files**; the final standard check passed **423 tests in 26
@@ -152,19 +169,20 @@ for the controlled route comparisons.
 
 ## Screenshots and limits
 
-The public entry, completed comparison, and compact scout inspection:
+The hosted entry, completed comparison, and compact scout inspection (2026-10-20):
 
-![Public mission, paused at tick zero](docs/images/public-1440.jpg)
-![Matched A/B comparison at tick 160, viewing B](docs/images/comparison-1440.jpg)
-![Scout A knowledge and inspector at 1024 × 768](docs/images/inspector-1024.jpg)
+![Hosted public mission, paused at tick zero](docs/images/hosted-public-1440.jpg)
+![Hosted matched A/B comparison at tick 160, viewing B](docs/images/hosted-comparison-1440.jpg)
+![Hosted Scout A knowledge and inspector at 1024 × 768](docs/images/hosted-inspector-1024.jpg)
 
 The desktop Field View is tested at 1440 × 900 and 1024 × 768;
 smaller screens and other browser engines remain unverified. Reduced-motion
 handling is implemented, but runtime preference emulation is unavailable in
 the current browser tools. One rooms-and-passages generator and one policy are
 implemented. Snapshot import is not schema-validated, and long-run performance
-is untuned. This abstract simulation does not establish general relay superiority or a
-completed portfolio release. Publication status will be recorded after live verification.
+is untuned. This abstract simulation does not establish general relay superiority.
+The install audit still reports one high-severity development-tool advisory in
+transitive `source-map-js`; the lockfile was unchanged by this repair.
 
 ## Publishing updates
 

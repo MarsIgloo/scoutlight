@@ -18,3 +18,19 @@ Paired advancement fell by 71.3%; the measured total fell by 38.3%. Node asserti
 The batch evaluator is unchanged. Each playback run now validates and retains its static observer context once, then validates only the newly appended snapshot. Facts are staged before commit; paired playback prepares both appends before either commits, and publishes one matching-tick view. Metrics publications copy their coverage rows, arrays and counters. Ground-truth evaluation remains outside planning. Existing complete-history, hash, speed, timer, cap and final-metric assertions and their 30-second budgets are retained.
 
 Independent read-only review found no blocking defects in metric semantics, immutable publication, paired reset/isolation or information boundaries; correctness/readability was rated 9/10. Runtime and CI verification are reported separately in the README.
+
+## Actual hosted-runner result
+
+[Repair CI/deployment](https://github.com/MarsIgloo/scoutlight/actions/runs/39482623674) passed all 433 tests across 26 files in 253.83 seconds on Node 24.20.0, retaining the existing macOS ARM runner, serial worker, heap option and every test budget. Production build and deployment then succeeded. These are observed case durations, not predictions from the local measurement:
+
+| Comparison case | CI duration | Remaining 30-second budget |
+| --- | ---: | ---: |
+| Original full history/hash/metrics | 17.347 s | 12.653 s |
+| West-room full history/hash/metrics | 14.741 s | 15.259 s |
+| Seed 0 full history/hash/metrics | 19.856 s | 10.144 s |
+| Seed 12345 full history/hash/metrics | 23.160 s | 6.840 s |
+| Seed 12345, 1× playback | 21.791 s | 8.209 s |
+| Seed 12345, 2× playback | 18.465 s | 11.535 s |
+| Seed 12345, 4× playback | 20.195 s | 9.805 s |
+
+Runner scheduling and load can vary; this passing run does not guarantee the same headroom on every future run. No broader engine change or follow-up optimization was needed.
